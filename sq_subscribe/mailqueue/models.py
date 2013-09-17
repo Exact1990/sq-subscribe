@@ -94,15 +94,24 @@ def create_mailqueue(subject, template, send_to, content_type, message=None, sen
 
 
 def send_email(subject,template,send_to,content_type,message=None,send_from=None,attachment=None):
-    attach_t = {}
-    if attachment is not None:
-        att_file_path = ATTACHMENT_PATH + u'/' + attachment['att_file_name']
-        with open(att_file_path, 'w') as f:
-            f.write(attachment['att_file'])
-            f.closed
-            attach_t.update({'att_file_name': attachment['att_file_name'], 'att_file_path': att_file_path, 'att_file_type': attachment['att_file_type']})
+    from django.conf import settings
+    try:
+        user = User.objects.get(email=send_to)
+    except:
+        user = None
+    import datetime
+    import pytz
+    datestart = datetime.datetime(year=2013, month=9, day=10, hour=0, minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+    if not settings.DEBUG or (settings.DEBUG and (user.is_staff or user.date_joined < datestart)) or user is None:
+        attach_t = {}
+        if attachment is not None:
+            att_file_path = ATTACHMENT_PATH + u'/' + attachment['att_file_name']
+            with open(att_file_path, 'w') as f:
+                f.write(attachment['att_file'])
+                f.closed
+                attach_t.update({'att_file_name': attachment['att_file_name'], 'att_file_path': att_file_path, 'att_file_type': attachment['att_file_type']})
 
-    from sq_subscribe.mailqueue.tasks import send_concrete_mailqueue
-    mail = create_mailqueue(subject,template,send_to,content_type,message,send_from,attach_t)
-    #TODO нужно придумать, как сделать проверку - отправлять ли письмо по таску или мгновенно.
-    send_concrete_mailqueue.delay([mail.id])
+        from sq_subscribe.mailqueue.tasks import send_concrete_mailqueue
+        mail = create_mailqueue(subject,template,send_to,content_type,message,send_from,attach_t)
+        #TODO нужно придумать, как сделать проверку - отправлять ли письмо по таску или мгновенно.
+        send_concrete_mailqueue.delay([mail.id])
