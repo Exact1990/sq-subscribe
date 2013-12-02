@@ -102,7 +102,7 @@ def send_email(subject,template,send_to,content_type,message=None,send_from=None
         user = None
     import datetime
     import pytz
-    datestart = datetime.datetime(year=2013, month=9, day=10, hour=0, minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+    datestart = datetime.datetime(year=2013, month=12, day=2, hour=0, minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
     if not settings.DEBUG or user is None or (settings.DEBUG and (user.is_staff or user.date_joined > datestart)):
         attach_t = {}
         if attachment is not None:
