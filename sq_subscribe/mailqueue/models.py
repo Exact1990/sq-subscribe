@@ -11,6 +11,7 @@ from django.template.loader import render_to_string, get_template_from_string
 from django.utils.html import strip_tags
 from django.conf import settings
 from apps.main.utils import ATTACHMENT_PATH
+from apps.organization.models import Organization
 import os
 
 
@@ -27,6 +28,7 @@ class MailQueue(models.Model):
     template = models.TextField(blank=True)
     created_date = models.DateTimeField(default=datetime.now())
     content_type = models.CharField(max_length=100, blank=True, choices=CONTENT_TYPE)
+    organization = models.ForeignKey(Organization,verbose_name=u'Сообщество', null=True, blank=True)
 
 
     def __unicode__(self):
@@ -80,39 +82,46 @@ class MailQueue(models.Model):
         self.delete()
         return msg
 
-def create_mailqueue(subject, template, send_to, content_type, message=None, send_from=None, attachment=None):
+def create_mailqueue(subject, template, send_to, content_type, message=None, send_from=None, attachment=None, organization=None):
     if not message: message = {}
     if not attachment: attachment = {}
+    if organization.exists_settings_email():
+        send_from = organization.email_from
     if send_from is None:
+        from django.conf import settings
         send_from = settings.DEFAULT_FROM_EMAIL
-    site = Site.objects.get_current()
-    message.update({"site":{'sitename': site.name,'domain':site.domain},"attachment":attachment})
+    #site = Site.objects.get_current()
+
+    message.update({"site":{'name': organization.name,'domain':organization.domain, 'email_manager': organization.email_manager},"attachment":attachment})
     msg = {"data":message}
-    mail = MailQueue.objects.create(message=json.dumps(msg),send_to=send_to,subject=subject,template=template,send_from=send_from,content_type=content_type)
+    mail = MailQueue.objects.create(message=json.dumps(msg),send_to=send_to,subject=subject,template=template,send_from=send_from,content_type=content_type, organization=organization)
     mail.save()
     return mail
 
 
-def send_email(subject,template,send_to,content_type,message=None,send_from=None,attachment=None):
+def send_email(subject,template,send_to,content_type, message=None,send_from=None,attachment=None, organization=None):
     from django.conf import settings
     from apps.user.models import User
     try:
         user = User.objects.get(email=send_to)
+        if user.organization is not None:
+            organization = user.organization
     except:
         user = None
-    import datetime
-    import pytz
-    datestart = datetime.datetime(year=2013, month=12, day=2, hour=0, minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
-    if not settings.DEBUG or user is None or (settings.DEBUG and (user.is_staff or user.date_joined > datestart)):
-        attach_t = {}
-        if attachment is not None:
-            att_file_path = ATTACHMENT_PATH + u'/' + attachment['att_file_name']
-            with open(att_file_path, 'w') as f:
-                f.write(attachment['att_file'])
-                f.closed
-                attach_t.update({'att_file_name': attachment['att_file_name'], 'att_file_path': att_file_path, 'att_file_type': attachment['att_file_type']})
+    if organization is not None:
+        import datetime
+        import pytz
+        datestart = datetime.datetime(year=2013, month=12, day=2, hour=0, minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+        if not settings.DEBUG or user is None or (settings.DEBUG and (user.is_staff or user.date_joined > datestart)):
+            attach_t = {}
+            if attachment is not None:
+                att_file_path = ATTACHMENT_PATH + u'/' + attachment['att_file_name']
+                with open(att_file_path, 'w') as f:
+                    f.write(attachment['att_file'])
+                    f.closed
+                    attach_t.update({'att_file_name': attachment['att_file_name'], 'att_file_path': att_file_path, 'att_file_type': attachment['att_file_type']})
 
-        from sq_subscribe.mailqueue.tasks import send_concrete_mailqueue
-        mail = create_mailqueue(subject,template,send_to,content_type,message,send_from,attach_t)
-        #TODO нужно придумать, как сделать проверку - отправлять ли письмо по таску или мгновенно.
-        send_concrete_mailqueue.delay([mail.id])
+            from sq_subscribe.mailqueue.tasks import send_concrete_mailqueue
+            mail = create_mailqueue(subject,template,send_to,content_type,message,send_from,attach_t, organization)
+            #TODO нужно придумать, как сделать проверку - отправлять ли письмо по таску или мгновенно.
+            send_concrete_mailqueue.delay([mail.id])

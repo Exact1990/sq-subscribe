@@ -14,6 +14,14 @@ def send_concrete_mailqueue(queue_ids):
             for email_id in queue_ids:
                 try:
                     email = MailQueue.objects.get(pk=email_id)
+                    connection = mail.get_connection()
+                    organization = email.organization
+                    if organization.exists_settings_email():
+                        connection.password = organization.email_host_password
+                        connection.username = organization.email_host_user
+                        connection.host = organization.email_host
+                        connection.port = organization.email_port
+                        connection.use_tls = organization.email_use_tls
                     msg = email.send_email(connection)
                     msg.send()
                 except Exception:
